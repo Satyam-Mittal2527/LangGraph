@@ -26,13 +26,39 @@ if user_input:
     with st.chat_message('user'):
         st.text(user_input)
 
-    response = workflow.invoke({
-        'messages': HumanMessage(content = user_input)
-    }, config = CONFIG)
+    # response = workflow.invoke({
+    #     'messages': HumanMessage(content = user_input)
+    # }, config = CONFIG)
 
-    ai_message = response['messages'][-1].content[0]['text']
+    # ai_message = response['messages'][-1].content[0]['text']
 
-    st.session_state['message_history'].append({'role':'assistant', 'content': ai_message})
+    
 
-    with st.chat_message('assistant'):
-        st.text(ai_message)
+   
+
+    def generate_response():
+        for message_chunk, metadata in workflow.stream(
+            {
+                "messages": [
+                    HumanMessage(content=user_input)
+                ]
+            },
+            config=CONFIG,
+            stream_mode="messages"
+        ):
+            content = message_chunk.content
+
+            if isinstance(content, str):
+                yield content
+
+            elif isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        yield block.get("text", "")
+    with st.chat_message("assistant"):
+        ai_message = st.write_stream(generate_response())
+
+        st.session_state["message_history"].append({
+            "role": "assistant",
+            "content": ai_message
+        })
