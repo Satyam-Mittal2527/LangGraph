@@ -15,8 +15,6 @@ for message in st.session_state['message_history']:
     with st.chat_message(message['role']):
         st.text(message['content'])
 
-# {'role': 'user', 'content': 'Hi'}
-# {'role': 'assistant', 'content': 'How can I help you'}
 
 user_input = st.chat_input('Type here')
 if user_input:
@@ -25,16 +23,6 @@ if user_input:
 
     with st.chat_message('user'):
         st.text(user_input)
-
-    # response = workflow.invoke({
-    #     'messages': HumanMessage(content = user_input)
-    # }, config = CONFIG)
-
-    # ai_message = response['messages'][-1].content[0]['text']
-
-    
-
-   
 
     def generate_response():
         for message_chunk, metadata in workflow.stream(
