@@ -39,4 +39,14 @@ graph.add_edge(START, 'chat_node')
 graph.add_edge('chat_node', END)
 
 workflow = graph.compile(checkpointer=checkpointer)
+# config = {
+#         'configurable': {
+#             'thread_id': 'thread_1'
+#         }
+#     }
+# response = workflow.invoke({
+#         'messages': [HumanMessage(content = 'Hi Im satyam')]
+#     },config= config)
 
+
+# print(workflow.get_state(config=config).values['messages'][1].content[0])
