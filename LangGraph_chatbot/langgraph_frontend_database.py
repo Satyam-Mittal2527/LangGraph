@@ -13,6 +13,8 @@ import uuid
 # of the user's first message.
 def generate_thread_id(user_text):
     thread_id = user_text[:30]
+    if len(user_text) > 30:
+        thread_id = user_text[:30]+'....'
     return thread_id
 
 
@@ -226,7 +228,14 @@ if user_input:
     #                 GENERATE AI RESPONSE
     # ========================================================
 
-    def generate_response():
+        # ========================================================
+    #                 GENERATE AI RESPONSE
+    # ========================================================
+
+    def generate_response(status_container):
+
+        current_node = None
+        tool_used = False
 
         # Stream the response from LangGraph.
         for message_chunk, metadata in workflow.stream(
@@ -238,24 +247,75 @@ if user_input:
             config={
                 'configurable': {
                     'thread_id': st.session_state['thread_id']
-                }
+                },
+                "metadata": {
+                    "thread_id": st.session_state['thread_id']
+                },
+                "run_name": "chat_run"
             },
             stream_mode="messages"
         ):
 
+            # ------------------------------------------------
+            # Get the LangGraph node that generated this chunk
+            # ------------------------------------------------
+            node_name = metadata.get("langgraph_node")
+
+            # ------------------------------------------------
+            # Update status when node changes
+            # ------------------------------------------------
+            if node_name != current_node:
+
+                current_node = node_name
+
+                if node_name == "chat_node":
+
+                    if tool_used:
+                        status_container.update(
+                            label="Generating final response...",
+                            state="running"
+                        )
+                    else:
+                        status_container.update(
+                            label="Thinking...",
+                            state="running"
+                        )
+
+                elif node_name == "tools":
+
+                    tool_used = True
+
+                    status_container.update(
+                        label="🔧 Using tool...",
+                        state="running"
+                    )
+
+                else:
+
+                    status_container.update(
+                        label=f"Processing: {node_name}",
+                        state="running"
+                    )
+
+            # ------------------------------------------------
+            # Extract content
+            # ------------------------------------------------
+
             content = message_chunk.content
 
+            # ------------------------------------------------
+            # Case 1: Content is a string
+            # ------------------------------------------------
 
-            # ------------------------------------------------
-            # Case 1: AI response is a string
-            # ------------------------------------------------
             if isinstance(content, str):
-                yield content
 
+                if content:
+                    yield content
 
             # ------------------------------------------------
-            # Case 2: AI response contains content blocks
+            # Case 2: Content is a list of blocks
             # ------------------------------------------------
+
             elif isinstance(content, list):
 
                 for block in content:
@@ -264,7 +324,11 @@ if user_input:
                         isinstance(block, dict)
                         and block.get("type") == "text"
                     ):
-                        yield block.get("text", "")
+
+                        text = block.get("text", "")
+
+                        if text:
+                            yield text
 
 
     # ========================================================
@@ -273,11 +337,37 @@ if user_input:
 
     with st.chat_message("assistant"):
 
-        # Stream the AI response to the UI.
-        ai_message = st.write_stream(generate_response())
+        # ----------------------------------------------------
+        # Create status container
+        # ----------------------------------------------------
 
+        status = st.status(
+            "Thinking...",
+            expanded=True
+        )
 
-        # Save the complete AI response to the message history.
+        # ----------------------------------------------------
+        # Stream AI response
+        # ----------------------------------------------------
+
+        ai_message = st.write_stream(
+            generate_response(status)
+        )
+
+        # ----------------------------------------------------
+        # Finish status
+        # ----------------------------------------------------
+
+        status.update(
+            label="Completed",
+            state="complete",
+            expanded=False
+        )
+
+        # ----------------------------------------------------
+        # Save response
+        # ----------------------------------------------------
+
         st.session_state["message_history"].append({
             "role": "assistant",
             "content": ai_message
