@@ -1,9 +1,9 @@
 
 import streamlit as st
-from langgraph_backend_with_database import workflow, retreive_all_threads
+from langgraph_backend_with_database import workflow, retreive_all_threads, ingest_pdf
 from langchain_core.messages import HumanMessage
 import uuid
-
+from pathlib import Path
 
 # ============================================================
 #                    UTILITY FUNCTIONS
@@ -92,6 +92,40 @@ if st.sidebar.button('New Chat'):
 
 
 st.sidebar.header('My Conversation')
+
+# ============================================================
+#                       PDF UPLOAD
+# ============================================================
+
+st.sidebar.header("Upload PDF")
+
+uploaded_file = st.sidebar.file_uploader(
+    "Upload a PDF for RAG",
+    type=["pdf"]
+)
+
+if uploaded_file:
+
+    upload_dir = Path("uploads")
+    upload_dir.mkdir(exist_ok=True)
+
+    pdf_path = upload_dir / uploaded_file.name
+
+    with open(pdf_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+
+    result = ingest_pdf(
+        str(pdf_path)
+    )
+
+    st.sidebar.success(
+        f"Indexed: {result['filename']}"
+    )
+
+    st.sidebar.caption(
+        f"{result['pages']} pages • "
+        f"{result['chunks']} chunks"
+    )
 
 
 # Display all previously created conversations.
@@ -372,4 +406,3 @@ if user_input:
             "role": "assistant",
             "content": ai_message
         })
-

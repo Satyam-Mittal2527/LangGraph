@@ -1,7 +1,7 @@
 from langgraph.graph import StateGraph, START, END
 from typing import TypedDict, Annotated
 from langchain_core.messages import BaseMessage, HumanMessage
-from langchain_google_genai import ChatGoogleGenerativeAI , GoogleGenerativeAIEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -9,16 +9,38 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph.message import add_messages
 import sqlite3
 from langgraph.prebuilt import ToolNode, tools_condition
-from langchain_core.tools import tool
+from langchain_core.tools import tool, BaseTool
 from langchain_community.tools import DuckDuckGoSearchRun
 import requests
-from langchain_community.vectorstores import FAISS
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import PyPDFLoader
+from langchain_mcp_adapters.client import MultiServerMCPClient
+import asyncio 
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / ".env")
+client = MultiServerMCPClient(
+    {
+        "server": {
+            "command": "/home/satyammittal/Desktop/fastmcp_remote_server/fastmcp-demo-server/.venv/bin/python",
+            "args": [
+                "/home/satyammittal/Desktop/fastmcp_remote_server/fastmcp-demo-server/src/fastmcp_demo_server/main.py"
+            ],
+            "transport": "stdio",
+        },
+        "demo": {
+            "transport": "http",
+            "url": "https://satyam-demo-server.fastmcp.app/mcp",
+            "headers": {
+                "Authorization": f"Bearer {os.getenv('MCP_AUTH_TOKEN')}"
+            },
+        }
+    }
+)
 
+async def load_mcp_tools() -> list[BaseTool]:
+    try:
+        return await client.get_tools()
+    except Exception:
+        return []
+
+mcp_tools = load_mcp_tools()
 search_tool = DuckDuckGoSearchRun(region="us-en")
 
 @tool
@@ -42,77 +64,6 @@ def calculator(first_num: float, second_num: float, opeator: str) -> dict:
             return {"error": "Unsupported operator {operator}"}
     except Exception as e:
         return {"Exception:", e}
-
-# print(os.getenv("GOOGLE_GENAI_KEY"))
-
-embedding_model = GoogleGenerativeAIEmbeddings(
-    model="models/gemini-embedding-001",
-    google_api_key=os.getenv("GOOGLE_GENAI_KEY")
-)
-from typing import Optional
-from pathlib import Path
-
-retriever = None
-uploaded_pdf_name = None
-
-
-def ingest_pdf(file_path: str):
-    global retriever
-    global uploaded_pdf_name
-
-    print(f"Loading PDF: {file_path}")
-
-    loader = PyPDFLoader(file_path)
-
-    docs = loader.load()
-
-    print(f"Pages loaded: {len(docs)}")
-
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=100,
-    )
-
-    chunks = splitter.split_documents(docs)
-
-    print(f"Chunks created: {len(chunks)}")
-
-    vector_store = FAISS.from_documents(
-        chunks,
-        embedding_model
-    )
-
-    retriever = vector_store.as_retriever(
-        search_type="similarity",
-        search_kwargs={"k": 4}
-    )
-
-    uploaded_pdf_name = Path(file_path).name
-
-    return {
-        "filename": uploaded_pdf_name,
-        "pages": len(docs),
-        "chunks": len(chunks)
-    }
-
-@tool
-def rag_tool(query: str):
-    """
-    Search the currently uploaded PDF for relevant information.
-    Use this tool for questions that require information from the PDF.
-    """
-
-    if retriever is None:
-        return "No PDF has been uploaded yet."
-
-    results = retriever.invoke(query)
-
-    context = "\n\n".join(
-        doc.page_content
-        for doc in results
-    )
-
-    return context
 
 @tool
 def get_stock_price(symbol: str) -> dict:
@@ -149,13 +100,16 @@ conn = sqlite3.connect(
     check_same_thread=False
 )
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
+
 
 llm = ChatGoogleGenerativeAI(
     model="gemini-3.1-flash-lite",
     google_api_key=os.getenv("GOOGLE_GENAI_KEY"),
 )
 
-tools = [get_stock_price, search_tool, calculator, rag_tool]
+tools = [get_stock_price, search_tool, calculator. mcp_tools]
 
 llm_with_tools = llm.bind_tools(tools)
 
